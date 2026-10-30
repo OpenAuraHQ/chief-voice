@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.log
+*.out
+state.json*
+away_tty
+config.env
+*.wav
+*.aiff
+.DS_Store

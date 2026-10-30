@@ -1,0 +1,5 @@
+# Pinned for reproducible, reviewable installs. mlx-whisper pulls in mlx, huggingface-hub, tiktoken, numba, torch.
+mlx-whisper==0.4.3
+mlx==0.32.4
+numpy==2.5.4
+sounddevice==0.5.6
