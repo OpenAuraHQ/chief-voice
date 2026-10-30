@@ -270,7 +270,11 @@ def terminal_window(cmd):
 def inject_terminal(msg):
     """Type into Claude Code and press Return: into the away window if one is away, else the front window."""
     if MAIN["tty"]:  # Terminal's `do script` types into a tab without focusing or un-minimizing it
+        # It sends the words and a Return in one burst, which Claude Code reads as a paste (the Return becomes
+        # a new line). So the words go first, then after a pause a lone Return submits them.
         _osa(f'tell application "Terminal" to do script {_as_string(msg)} in {_away_tab()}')
+        time.sleep(0.6)
+        _osa(f'tell application "Terminal" to do script "" in {_away_tab()}')
         return
     _osa('tell application "Terminal" to activate\n'
          'delay 0.15\n'

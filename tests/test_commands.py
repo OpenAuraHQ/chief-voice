@@ -62,6 +62,9 @@ check("dictation continues while away", sent, ["keep going"])
 c, sent, windows = run(["Chief listen, main terminal away", "status please", "Chief send"])
 check("'Chief listen, main terminal away' keeps listening", (windows, sent), (["away"], ["status please"]))
 
+_, sent, _ = run(["Chief, here is a long thought", "and then I said Chief in the middle", "Chief, more words", "Chief send"])
+check("saying Chief mid-message never restarts it", sent, ["here is a long thought and then I said Chief in the middle Chief, more words"])
+
 check("leading '!' is removed (Claude Code shell escape)", chief.safe_message("! rm -rf ~"), "rm -rf ~")
 check("AppleScript string escaping", chief._as_string('say "hi" \\ café'), '"say \\"hi\\" \\\\ café"')
 
