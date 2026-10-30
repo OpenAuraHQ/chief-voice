@@ -273,7 +273,11 @@ def inject_terminal(msg):
         # It sends the words and a Return in one burst, which Claude Code reads as a paste (the Return becomes
         # a new line). So the words go first, then after a pause a lone Return submits them.
         _osa(f'tell application "Terminal" to do script {_as_string(msg)} in {_away_tab()}')
-        time.sleep(0.6)
+        time.sleep(0.8 + len(msg) / 300)  # long messages take Claude Code longer to take in
+        _osa(f'tell application "Terminal" to do script "" in {_away_tab()}')
+        # A long message takes the first Return as a new line; the second submits it. On an empty box
+        # (a short message already sent) the extra Return does nothing.
+        time.sleep(0.8)
         _osa(f'tell application "Terminal" to do script "" in {_away_tab()}')
         return
     _osa('tell application "Terminal" to activate\n'
@@ -319,6 +323,23 @@ def transcribe(audio):
                     if s.get("no_speech_prob", 0) < 0.6).strip()
 
 
+VOICE_PID = os.path.expanduser("~/.claude/chief-speak/play.pid")  # written while a spoken reply plays (speak/)
+_speak_cache = [0.0, False]
+
+
+def claude_speaking():
+    """True while Claude's spoken reply is playing, so Chief never transcribes Claude's own voice."""
+    now = time.time()
+    if now - _speak_cache[0] > 0.25:
+        try:
+            os.kill(int(open(VOICE_PID).read()), 0)
+            _speak_cache[1] = True
+        except Exception:
+            _speak_cache[1] = False
+        _speak_cache[0] = now
+    return _speak_cache[1]
+
+
 def utterances(stream, gate=SPEECH_DB):
     """Yield float32 arrays, one per spoken utterance, using an energy gate."""
     buf, speech, quiet, active = [], 0.0, 0.0, False
@@ -330,6 +351,9 @@ def utterances(stream, gate=SPEECH_DB):
         x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
         db = 20 * np.log10(np.sqrt(np.mean(x * x)) + 1e-9)
         dt = FRAME / SR
+        if claude_speaking():  # drop anything heard while Claude talks (and the utterance in progress)
+            active, buf, quiet, pre = False, [], 0.0, []
+            continue
         if db > gate:
             if not active:
                 active, buf, speech = True, list(pre), 0.0
