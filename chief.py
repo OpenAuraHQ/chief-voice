@@ -27,6 +27,7 @@ Usage:
 Settings (environment variables, all optional): see README.md.
 """
 import argparse
+import collections
 import json
 import os
 import re
@@ -60,6 +61,8 @@ FRAME = SR * 30 // 1000  # 30 ms
 END_SILENCE = 0.8  # seconds of quiet that closes an utterance
 MIN_SPEECH = 0.35  # shorter blips are ignored
 MAX_UTTER = 25.0
+# The gate stays at least this many dB above the room's quiet level, so a fan or AC never holds an utterance open
+NOISE_MARGIN = float(os.environ.get("CHIEF_NOISE_MARGIN", "8"))
 
 # --- command grammar -----------------------------------------------------------------------------------
 WAKE = r"(?:" + "|".join(re.escape(w.strip()) for w in WAKE_WORDS.split(",") if w.strip()) + r")"
@@ -267,8 +270,19 @@ def terminal_window(cmd):
         _osa('tell application "Terminal" to activate')
 
 
+def _forget_closed_window():
+    """If the window sent away has since been closed, fall back to the front window instead of typing nowhere."""
+    if not MAIN["tty"]:
+        return
+    out = _osa('tell application "Terminal" to get tty of every tab of every window')
+    if MAIN["tty"] not in {t.strip() for t in out.split(",")}:
+        log("the away window was closed; typing into the front window")
+        _remember(None)
+
+
 def inject_terminal(msg):
     """Type into Claude Code and press Return: into the away window if one is away, else the front window."""
+    _forget_closed_window()
     if MAIN["tty"]:  # Terminal's `do script` types into a tab without focusing or un-minimizing it
         # It sends the words and a Return in one burst, which Claude Code reads as a paste (the Return becomes
         # a new line). So the words go first, then after a pause a lone Return submits them.
@@ -291,6 +305,7 @@ def inject_terminal(msg):
 
 def interrupt_terminal():
     """Press Escape in Claude Code (interrupts it): the away window if one is away, else the front window."""
+    _forget_closed_window()
     if MAIN["tty"]:
         _osa(f'tell application "Terminal" to do script (ASCII character 27) in {_away_tab()}')
         return
@@ -344,6 +359,8 @@ def utterances(stream, gate=SPEECH_DB):
     """Yield float32 arrays, one per spoken utterance, using an energy gate."""
     buf, speech, quiet, active = [], 0.0, 0.0, False
     pre = []  # keep 300 ms before speech starts so first words are not clipped
+    recent = collections.deque(maxlen=300)  # last ~9 s of frame levels, to follow the room's noise floor
+    room_gate, logged = gate, gate
     while True:
         raw = stream.read(FRAME * 2)
         if len(raw) < FRAME * 2:
@@ -354,7 +371,14 @@ def utterances(stream, gate=SPEECH_DB):
         if claude_speaking():  # drop anything heard while Claude talks (and the utterance in progress)
             active, buf, quiet, pre = False, [], 0.0, []
             continue
-        if db > gate:
+        recent.append(db)
+        if len(recent) >= 30 and len(recent) % 10 == 0:
+            # A noisy room can sit above the fixed gate; then an utterance never ends until MAX_UTTER.
+            room_gate = max(gate, float(np.percentile(recent, 20)) + NOISE_MARGIN)
+            if abs(room_gate - logged) >= 3:
+                log(f"speech gate {room_gate:.0f} dB (room noise)")
+                logged = room_gate
+        if db > room_gate:
             if not active:
                 active, buf, speech = True, list(pre), 0.0
             speech += dt

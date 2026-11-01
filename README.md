@@ -68,6 +68,7 @@ Put any of these in `~/.chief/config.env` (one `NAME="value"` per line), then `.
 | `CHIEF_MODEL` | `mlx-community/whisper-large-v3-turbo` | any MLX Whisper model (re-run `./install.sh` after changing) |
 | `CHIEF_SOUNDS` | `1` | `0` turns the command sounds off |
 | `CHIEF_SPEECH_DB` | `-45` | speech gate; lower it (e.g. `-50`) if quiet speech is missed |
+| `CHIEF_NOISE_MARGIN` | `8` | dB above the room's background noise that counts as speech; lower it if you talk from far away in a noisy room |
 | `CHIEF_LOG_TEXT` | `0` | `1` also writes your dictated words to the log (off for privacy) |
 | `CHIEF_HOME` | `~/.chief` | where the log, state and settings live |
 
